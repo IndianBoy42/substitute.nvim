@@ -24,6 +24,7 @@ function substitute.operator(options)
   options = options or {}
   substitute.state.register = options.register or vim.v.register
   substitute.state.count = options.count or (vim.v.count > 0 and vim.v.count or 1)
+  substitute.state.wrappers = options.wrappers or nil
   vim.o.operatorfunc = "v:lua.require'substitute'.operator_callback"
   vim.api.nvim_feedkeys("g@" .. (options.motion or ""), "mi", false)
 end
@@ -33,18 +34,24 @@ function substitute.operator_callback(vmode)
 
   local substitued_text = utils.text(0, marks.start, marks.finish, vmode)
 
-  local regcontents = vim.fn.getreg(substitute.state.register)
-  local regtype = vim.fn.getregtype(substitute.state.register)
-  local replacement = vim.split(regcontents:rep(substitute.state.count):gsub("\n$", ""), "\n")
+  local doSubstitution = function(state, _)
+    local regcontents = vim.fn.getreg(state.register)
+    local regtype = vim.fn.getregtype(state.register)
+    local replacement = vim.split(regcontents:rep(substitute.state.count):gsub("\n$", ""), "\n")
 
-  local subs_marks = utils.substitute_text(0, marks.start, marks.finish, vmode, replacement, regtype)
+    local subs_marks = utils.substitute_text(0, marks.start, marks.finish, vmode, replacement, regtype)
 
-  vim.api.nvim_buf_set_mark(0, "[", subs_marks[1].start.row, subs_marks[1].start.col, {})
-  vim.api.nvim_buf_set_mark(0, "]", subs_marks[#subs_marks].finish.row, subs_marks[#subs_marks].finish.col - 1, {})
+    vim.api.nvim_buf_set_mark(0, "[", subs_marks[1].start.row, subs_marks[1].start.col, {})
+    vim.api.nvim_buf_set_mark(0, "]", subs_marks[#subs_marks].finish.row, subs_marks[#subs_marks].finish.col - 1, {})
 
-  if config.options.highlight_substituted_text.enabled then
-    substitute.highlight_substituted_text(subs_marks)
+    if config.options.highlight_substituted_text.enabled then
+      substitute.highlight_substituted_text(subs_marks)
+    end
   end
+
+  local wrapper = substitute.state.wrappers or doSubstitution
+
+  wrapper(substitute.state, doSubstitution)
 
   if config.options.yank_substituted_text then
     vim.fn.setreg(utils.get_default_register(), table.concat(substitued_text, "\n"), utils.get_register_type(vmode))
@@ -67,6 +74,7 @@ function substitute.line(options)
     motion = count .. "_",
     count = 1,
     register = options.register or vim.v.register,
+    wrappers = options.wrappers or nil,
   })
 end
 
@@ -76,6 +84,7 @@ function substitute.eol(options)
     motion = "$",
     register = options.register or vim.v.register,
     count = options.count or (vim.v.count > 0 and vim.v.count or 1),
+    wrappers = options.wrappers or nil,
   })
 end
 
@@ -83,6 +92,8 @@ function substitute.visual(options)
   options = options or {}
   substitute.state.register = options.register or vim.v.register
   substitute.state.count = options.count or (vim.v.count > 0 and vim.v.count or 1)
+  substitute.state.wrappers = options.wrappers or nil
+
   vim.o.operatorfunc = "v:lua.require'substitute'.operator_callback"
   vim.api.nvim_feedkeys("g@`<", "ni", false)
 end
